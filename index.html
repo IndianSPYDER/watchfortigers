@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tiger Watcher 🐯</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #0c1a0c;
+    color: #e8d9b8;
+    font-family: 'DM Mono', monospace;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 60% 80% at 10% 40%, rgba(50,100,50,0.18) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 85% 15%, rgba(255,100,20,0.07) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+  #root { position: relative; z-index: 1; min-height: 100vh; }
+
+  /* Tiger stripe decoration */
+  .stripe-deco {
+    position: fixed; top: 0; right: 0;
+    width: 300px; height: 100vh;
+    background: repeating-linear-gradient(
+      -15deg, transparent, transparent 35px,
+      rgba(255,107,26,0.025) 35px, rgba(255,107,26,0.025) 70px
+    );
+    pointer-events: none; z-index: 0;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0c1a0c; }
+  ::-webkit-scrollbar-thumb { background: #3d6b3d; border-radius: 2px; }
+
+  /* global input focus ring */
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: #ff6b1a !important;
+    box-shadow: 0 0 0 2px rgba(255,107,26,0.15);
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes prowl {
+    0%,100% { transform: translateX(-8px) rotate(-3deg); }
+    50%     { transform: translateX(8px) rotate(3deg); }
+  }
+  @keyframes blink {
+    0%,100% { opacity:1; } 50% { opacity:0.3; }
+  }
+  @keyframes toastIn {
+    from { opacity:0; transform: translateY(20px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 20px rgba(230,57,70,0.15); }
+    50%     { box-shadow: 0 0 45px rgba(230,57,70,0.35); }
+  }
+  @keyframes msgPop {
+    from { opacity:0; transform:translateY(6px) scale(0.97); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+  }
+</style>
+</head>
+<body>
+<div class="stripe-deco"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════ */
+const T = {
+  orange: '#ff6b1a',
+  amber:  '#ffab40',
+  cream:  '#f5ead6',
+  jungle: '#172917',
+  deep:   '#0c1a0c',
+  leaf:   '#3d6b3d',
+  green:  '#5a9e5a',
+  text:   '#e8d9b8',
+  muted:  '#7a8c6a',
+  danger: '#e63946',
+  border: 'rgba(255,107,26,0.18)',
+  cardBg: 'rgba(23,41,23,0.95)',
+};
+
+/* ═══════════════════════════════════════════════
+   SEED DATA
+═══════════════════════════════════════════════ */
+const tnow = (off=0) => {
+  const d = new Date(Date.now() - off*60000);
+  return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+};
+
+const mkSeedUsers = () => ({
+  'tigerhunter': { pass:'demo', name:'Tiger Hunter', avatar:'🐯', reports:3, msgs:12, joined:'Jan 2026' },
+  'jungle_jane':  { pass:'demo', name:'Jungle Jane',  avatar:'🌿', reports:7, msgs:44, joined:'Dec 2025' },
+  'scout_rex':    { pass:'demo', name:'Scout Rex',    avatar:'🦁', reports:2, msgs:8,  joined:'Feb 2026' },
+});
+
+const mkSeedMsgs = () => [
+  { id:1, user:'jungle_jane', name:'Jungle Jane', av:'🌿', text:'Just spotted fresh tracks near Sector 7 — everyone stay alert 👣', t:tnow(45) },
+  { id:2, user:'scout_rex',   name:'Scout Rex',   av:'🦁', text:'Confirmed, the Bengal from last week might still be around.', t:tnow(38) },
+  { id:3, user:'tigerhunter', name:'Tiger Hunter', av:'🐯', text:'Eyes on the eastern boundary. Heading to check Maple Street house now.', t:tnow(22) },
+  { id:4, user:'jungle_jane', name:'Jungle Jane', av:'🌿', text:'🚨 Filed a report: 45 Oak Lane — one adult tiger, medium severity!', t:tnow(10) },
+];
+
+const mkSeedReports = () => [
+  { id:1, user:'jungle_jane', name:'Jungle Jane', loc:'45 Oak Lane, House 3', type:'Single-family house', sev:'medium', count:1, behavior:'Pacing / Restless', desc:'Tiger visible through ground floor window. Pacing back and forth. Homeowners appear to be away.', safety:'Safe — observing from distance', t:tnow(10) },
+  { id:2, user:'tigerhunter', name:'Tiger Hunter', loc:'12 Pine Street, Basement', type:'Basement', sev:'high', count:2, behavior:'Growling / Roaring', desc:'Two tigers heard through the basement window. Very loud growling. Neighbors have been warned.', safety:'Safe — inside locked area', t:tnow(55) },
+  { id:3, user:'scout_rex',   name:'Scout Rex', loc:'88 Willow Ave, Backyard', type:'Backyard', sev:'low', count:1, behavior:'Sleeping / Resting', desc:'Cub resting by the garden shed. Calm and non-threatening. Monitoring from a safe distance.', safety:'Safe — observing from distance', t:tnow(180) },
+];
+
+/* ═══════════════════════════════════════════════
+   SHARED COMPONENTS
+═══════════════════════════════════════════════ */
+const Btn = ({ label, variant='primary', full=false, size='md', onClick, style={} }) => {
+  const [hov, setHov] = useState(false);
+  const colors = { primary:T.orange, danger:T.danger, green:T.green, ghost:T.muted, amber:T.amber };
+  const c = colors[variant] || T.orange;
+  const pad = size==='sm' ? '0.4rem 1rem' : size==='lg' ? '0.85rem 2rem' : '0.65rem 1.4rem';
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={()=>setHov(true)}
+      onMouseLeave={()=>setHov(false)}
+      style={{
+        fontFamily:"'Bebas Neue',cursive", fontSize: size==='lg'?'1.2rem':'1rem',
+        letterSpacing:'0.1em', padding: pad,
+        border:`2px solid ${c}`, borderRadius:'2px', cursor:'pointer',
+        background: hov ? c : 'transparent',
+        color: hov ? (variant==='ghost'?T.deep:T.deep) : c,
+        width: full?'100%':'auto', transition:'all 0.13s',
+        textTransform:'uppercase', ...style,
+      }}
+    >{label}</button>
+  );
+};
+
+const Input = ({ value, onChange, placeholder, type='text', onKeyDown }) => (
+  <input
+    type={type}
+    value={value}
+    onChange={e=>onChange(e.target.value)}
+    placeholder={placeholder}
+    onKeyDown={onKeyDown}
+    style={{
+      width:'100%', background:T.deep,
+      border:`1px solid rgba(255,107,26,0.25)`,
+      color:T.text, fontFamily:"'DM Mono',monospace",
+      fontSize:'0.88rem', padding:'0.65rem 0.9rem',
+      borderRadius:'2px', transition:'border-color 0.15s',
+    }}
+  />
+);
+
+const Select = ({ value, onChange, options, placeholder }) => (
+  <select
+    value={value}
+    onChange={e=>onChange(e.target.value)}
+    style={{
+      width:'100%', background:T.deep,
+      border:`1px solid rgba(255,107,26,0.25)`,
+      color: value ? T.text : T.muted,
+      fontFamily:"'DM Mono',monospace",
+      fontSize:'0.85rem', padding:'0.65rem 0.9rem',
+      borderRadius:'2px', transition:'border-color 0.15s',
+      cursor:'pointer',
+    }}
+  >
+    <option value="">{placeholder}</option>
+    {options.map(o=><option key={o} value={o} style={{background:T.jungle,color:T.text}}>{o}</option>)}
+  </select>
+);
+
+const Textarea = ({ value, onChange, placeholder }) => (
+  <textarea
+    value={value}
+    onChange={e=>onChange(e.target.value)}
+    placeholder={placeholder}
+    rows={4}
+    style={{
+      width:'100%', background:T.deep,
+      border:`1px solid rgba(255,107,26,0.25)`,
+      color:T.text, fontFamily:"'DM Mono',monospace",
+      fontSize:'0.85rem', padding:'0.65rem 0.9rem',
+      borderRadius:'2px', resize:'vertical',
+      transition:'border-color 0.15s',
+    }}
+  />
+);
+
+const Lbl = ({children}) => (
+  <div style={{fontSize:'0.67rem',letterSpacing:'0.15em',textTransform:'uppercase',color:T.muted,marginBottom:'0.35rem'}}>{children}</div>
+);
+
+const FG = ({label,children}) => (
+  <div style={{marginBottom:'1.1rem'}}>
+    <Lbl>{label}</Lbl>
+    {children}
+  </div>
+);
+
+const ErrBox = ({msg}) => msg ? (
+  <div style={{background:'rgba(230,57,70,0.12)',border:'1px solid rgba(230,57,70,0.4)',color:'#ff8888',fontSize:'0.78rem',padding:'0.6rem 0.9rem',borderRadius:'2px',marginBottom:'1rem'}}>{msg}</div>
+) : null;
+
+const SevBadge = ({sev}) => {
+  const map = {low:['#5a9e5a','rgba(90,158,90,0.15)'],medium:[T.amber,'rgba(255,171,64,0.12)'],high:[T.orange,'rgba(255,107,26,0.12)'],critical:[T.danger,'rgba(230,57,70,0.15)']};
+  const [c,bg] = map[sev]||map.medium;
+  return <span style={{fontSize:'0.62rem',padding:'2px 8px',borderRadius:'10px',border:`1px solid ${c}`,color:c,background:bg,letterSpacing:'0.1em',textTransform:'uppercase',whiteSpace:'nowrap'}}>{sev}</span>;
+};
+
+/* ═══════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════ */
+const Toast = ({msg}) => msg ? (
+  <div style={{position:'fixed',bottom:'2rem',right:'2rem',background:T.leaf,border:`1px solid ${T.green}`,color:T.cream,fontSize:'0.85rem',padding:'0.75rem 1.5rem',borderRadius:'3px',zIndex:9999,boxShadow:'0 8px 40px rgba(0,0,0,0.5)',animation:'toastIn 0.3s ease'}}>
+    {msg}
+  </div>
+) : null;
+
+/* ═══════════════════════════════════════════════
+   LANDING
+═══════════════════════════════════════════════ */
+const Landing = ({onLogin, onRegister}) => (
+  <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh',padding:'2rem',textAlign:'center',animation:'fadeUp 0.5s ease'}}>
+    <div style={{fontSize:'5.5rem',marginBottom:'0.5rem',display:'inline-block',animation:'prowl 3s ease-in-out infinite'}}>🐯</div>
+    <h1 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'clamp(4.5rem,13vw,9rem)',lineHeight:0.88,color:T.orange,textShadow:`5px 5px 0 #1a0a00, 0 0 80px rgba(255,107,26,0.35)`,letterSpacing:'0.04em',marginBottom:'0.6rem'}}>
+      TIGER<br/>WATCHER
+    </h1>
+    <p style={{fontFamily:"'Playfair Display',serif",fontStyle:'italic',fontSize:'1.25rem',color:T.amber,marginBottom:'2.5rem',opacity:0.9}}>
+      Spot it. Report it. Watch it together.
+    </p>
+    <div style={{display:'flex',gap:'1rem',justifyContent:'center',flexWrap:'wrap',marginBottom:'3rem'}}>
+      <Btn label="Sign In" variant="primary" size="lg" onClick={onLogin} />
+      <Btn label="Create Account" variant="ghost" size="lg" onClick={onRegister} />
+    </div>
+    <div style={{display:'flex',gap:'2.5rem',flexWrap:'wrap',justifyContent:'center'}}>
+      {[['🌿','Community Chat','Talk with other watchers'],['🚨','Tiger Reporter','Report tigers in houses'],['📋','Live Feed','See all active sightings']].map(([ic,t,d])=>(
+        <div key={t} style={{textAlign:'center',maxWidth:'140px'}}>
+          <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>{ic}</div>
+          <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1rem',color:T.cream,letterSpacing:'0.08em'}}>{t}</div>
+          <div style={{fontSize:'0.72rem',color:T.muted,marginTop:'0.2rem',lineHeight:1.4}}>{d}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════
+   LOGIN
+═══════════════════════════════════════════════ */
+const LoginPage = ({users, onSuccess, onGoReg, onBack}) => {
+  const [uname, setUname] = useState('');
+  const [pass, setPass] = useState('');
+  const [err, setErr] = useState('');
+
+  const submit = () => {
+    const u = uname.trim().toLowerCase();
+    if (!u || !pass) { setErr('Please fill in all fields.'); return; }
+    if (!users[u]) { setErr('No account found with that username.'); return; }
+    if (users[u].pass !== pass) { setErr('Wrong password. Try again.'); return; }
+    setErr('');
+    onSuccess(u);
+  };
+
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',padding:'2rem'}}>
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',padding:'2.5rem',width:'100%',maxWidth:'420px',boxShadow:'0 30px 100px rgba(0,0,0,0.6)',animation:'fadeUp 0.35s ease'}}>
+        <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🐯</div>
+        <h2 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2.5rem',color:T.orange,letterSpacing:'0.08em',marginBottom:'0.25rem'}}>Sign In</h2>
+        <p style={{fontSize:'0.78rem',color:T.muted,marginBottom:'1.8rem'}}>Welcome back, watcher.</p>
+        <ErrBox msg={err} />
+        <FG label="Username"><Input value={uname} onChange={setUname} placeholder="your_username" onKeyDown={e=>e.key==='Enter'&&submit()} /></FG>
+        <FG label="Password"><Input value={pass} onChange={setPass} placeholder="••••••••" type="password" onKeyDown={e=>e.key==='Enter'&&submit()} /></FG>
+        <div style={{fontSize:'0.7rem',color:T.muted,marginBottom:'1.2rem',padding:'0.6rem 0.8rem',background:'rgba(255,171,64,0.07)',borderRadius:'2px',border:`1px solid rgba(255,171,64,0.15)`}}>
+          💡 Demo: <strong style={{color:T.amber}}>tigerhunter</strong> / <strong style={{color:T.amber}}>jungle_jane</strong> — password: <strong style={{color:T.amber}}>demo</strong>
+        </div>
+        <Btn label="Sign In →" variant="primary" full onClick={submit} size="lg" />
+        <div style={{marginTop:'1.2rem',fontSize:'0.73rem',color:T.muted,textAlign:'center'}}>
+          No account? <span style={{color:T.amber,cursor:'pointer',textDecoration:'underline'}} onClick={onGoReg}>Create one</span>
+          {'  ·  '}
+          <span style={{color:T.muted,cursor:'pointer',textDecoration:'underline'}} onClick={onBack}>← Back</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   REGISTER
+═══════════════════════════════════════════════ */
+const RegisterPage = ({users, onSuccess, onGoLogin, onBack}) => {
+  const [uname, setUname] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [err, setErr] = useState('');
+
+  const submit = () => {
+    const u = uname.trim().toLowerCase();
+    const dn = displayName.trim();
+    if (!u || !dn || !pass || !pass2) { setErr('Please fill in all fields.'); return; }
+    if (!/^[a-z0-9_]+$/.test(u)) { setErr('Username: only letters, numbers, underscores.'); return; }
+    if (users[u]) { setErr('That username is already taken. Try another.'); return; }
+    if (pass.length < 4) { setErr('Password must be at least 4 characters.'); return; }
+    if (pass !== pass2) { setErr("Passwords don't match."); return; }
+    setErr('');
+    onSuccess(u, { pass, name:dn, avatar:'🐯', reports:0, msgs:0, joined:new Date().toLocaleDateString('en-US',{month:'short',year:'numeric'}) });
+  };
+
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',padding:'2rem'}}>
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',padding:'2.5rem',width:'100%',maxWidth:'420px',boxShadow:'0 30px 100px rgba(0,0,0,0.6)',animation:'fadeUp 0.35s ease'}}>
+        <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>🌿</div>
+        <h2 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2.5rem',color:T.orange,letterSpacing:'0.08em',marginBottom:'0.25rem'}}>New Account</h2>
+        <p style={{fontSize:'0.78rem',color:T.muted,marginBottom:'1.8rem'}}>Join the Tiger Watcher community.</p>
+        <ErrBox msg={err} />
+        <FG label="Username (letters, numbers, _)">
+          <Input value={uname} onChange={setUname} placeholder="jungle_scout_99" onKeyDown={e=>e.key==='Enter'&&submit()} />
+        </FG>
+        <FG label="Display Name">
+          <Input value={displayName} onChange={setDisplayName} placeholder="Scout Rodriguez" onKeyDown={e=>e.key==='Enter'&&submit()} />
+        </FG>
+        <FG label="Password (min 4 chars)">
+          <Input value={pass} onChange={setPass} placeholder="••••••••" type="password" onKeyDown={e=>e.key==='Enter'&&submit()} />
+        </FG>
+        <FG label="Confirm Password">
+          <Input value={pass2} onChange={setPass2} placeholder="••••••••" type="password" onKeyDown={e=>e.key==='Enter'&&submit()} />
+        </FG>
+        <Btn label="Create Account →" variant="primary" full onClick={submit} size="lg" />
+        <div style={{marginTop:'1.2rem',fontSize:'0.73rem',color:T.muted,textAlign:'center'}}>
+          Already have an account? <span style={{color:T.amber,cursor:'pointer',textDecoration:'underline'}} onClick={onGoLogin}>Sign in</span>
+          {'  ·  '}
+          <span style={{color:T.muted,cursor:'pointer',textDecoration:'underline'}} onClick={onBack}>← Back</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   DASHBOARD TAB
+═══════════════════════════════════════════════ */
+const Dashboard = ({user, users, reports, messages}) => {
+  const sevColor = {low:T.green, medium:T.amber, high:T.orange, critical:T.danger};
+  const total = reports.length;
+  const active = reports.filter(r=>r.sev!=='low').length;
+  const critical = reports.filter(r=>r.sev==='critical').length;
+  const agents = Object.keys(users).length;
+
+  return (
+    <div style={{padding:'1.5rem 2rem',maxWidth:'1000px',margin:'0 auto',animation:'fadeUp 0.3s ease'}}>
+      <h2 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2.2rem',color:T.cream,letterSpacing:'0.04em',marginBottom:'1.5rem'}}>
+        Good hunting, <span style={{color:T.orange}}>{user.name}</span> 🐯
+      </h2>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'1rem',marginBottom:'2rem'}}>
+        {[[total,'Total Reports','📋'],[active,'Active Sightings','👁️'],[agents,'Watchers','👥'],[critical,'Critical','🚨']].map(([v,l,ic])=>(
+          <div key={l} style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'4px',padding:'1.2rem',borderLeft:`3px solid ${T.orange}`}}>
+            <div style={{fontSize:'0.7rem',color:T.muted,letterSpacing:'0.15em',textTransform:'uppercase',marginBottom:'0.4rem'}}>{ic} {l}</div>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2.6rem',color:T.orange,lineHeight:1}}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Latest reports */}
+      <div style={{marginBottom:'2rem'}}>
+        <h3 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:T.amber,letterSpacing:'0.1em',marginBottom:'0.75rem'}}>🚨 Latest Tiger Reports</h3>
+        <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'4px',overflow:'hidden'}}>
+          {[...reports].reverse().slice(0,5).map((r,i)=>(
+            <div key={r.id} style={{padding:'0.9rem 1.2rem',borderBottom:i<4?`1px solid rgba(255,107,26,0.08)`:'none',display:'flex',gap:'1rem',alignItems:'flex-start'}}>
+              <span style={{fontSize:'1.4rem',flexShrink:0}}>🐯</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:'0.85rem',color:T.text,fontWeight:500}}>{r.loc}</div>
+                <div style={{fontSize:'0.72rem',color:T.muted,marginTop:'0.2rem'}}>by {r.name} · {r.count} tiger{r.count>1?'s':''} · {r.behavior} · {r.t}</div>
+              </div>
+              <SevBadge sev={r.sev} />
+            </div>
+          ))}
+          {reports.length===0 && <div style={{padding:'2rem',textAlign:'center',color:T.muted,fontSize:'0.82rem',fontStyle:'italic'}}>No reports yet — be the first! 🐯</div>}
+        </div>
+      </div>
+
+      {/* Recent chat */}
+      <div>
+        <h3 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:T.amber,letterSpacing:'0.1em',marginBottom:'0.75rem'}}>💬 Recent Chat</h3>
+        <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'4px',overflow:'hidden'}}>
+          {[...messages].reverse().slice(0,4).map((m,i)=>(
+            <div key={m.id} style={{padding:'0.8rem 1.2rem',borderBottom:i<3?`1px solid rgba(255,107,26,0.08)`:'none',display:'flex',gap:'0.8rem',alignItems:'center'}}>
+              <span style={{fontSize:'1.2rem'}}>{m.av}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <span style={{fontSize:'0.72rem',color:T.orange,marginRight:'0.5rem'}}>{m.name}</span>
+                <span style={{fontSize:'0.8rem',color:T.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'inline-block',maxWidth:'80%',verticalAlign:'middle'}}>{m.text}</span>
+              </div>
+              <span style={{fontSize:'0.65rem',color:T.muted,flexShrink:0}}>{m.t}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   CHAT TAB
+═══════════════════════════════════════════════ */
+const Chat = ({user, username, users, messages, onSend}) => {
+  const [text, setText] = useState('');
+  const bottomRef = useRef(null);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages]);
+
+  const send = () => {
+    const t = text.trim();
+    if (!t) return;
+    onSend(t);
+    setText('');
+  };
+
+  const getRank = r => r>=15?'Commander':r>=7?'Senior Agent':r>=3?'Agent':r>=1?'Scout':'Rookie';
+
+  return (
+    <div style={{display:'flex',height:'calc(100vh - 57px)'}}>
+      {/* Sidebar */}
+      <div style={{width:'220px',flexShrink:0,background:'rgba(12,26,12,0.8)',borderRight:`1px solid ${T.border}`,padding:'1rem',overflowY:'auto'}}>
+        <div style={{fontSize:'0.62rem',letterSpacing:'0.18em',textTransform:'uppercase',color:T.muted,marginBottom:'0.75rem',paddingBottom:'0.5rem',borderBottom:`1px solid ${T.border}`}}>
+          Online Watchers
+        </div>
+        {Object.entries(users).map(([u,d])=>(
+          <div key={u} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.35rem 0.4rem',borderRadius:'2px',marginBottom:'0.15rem'}}>
+            <div style={{width:'7px',height:'7px',borderRadius:'50%',background:T.green,flexShrink:0}} />
+            <span style={{fontSize:'0.8rem',color:u===username?T.orange:T.text}}>{d.avatar} {d.name}{u===username?' (you)':''}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Main chat */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
+        <div style={{padding:'0.85rem 1.5rem',borderBottom:`1px solid ${T.border}`,background:'rgba(23,41,23,0.6)',flexShrink:0}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:T.amber,letterSpacing:'0.08em'}}>🌿 Community Chat</span>
+          <span style={{fontSize:'0.72rem',color:T.muted,marginLeft:'1rem'}}>Share sightings and coordinate with other watchers</span>
+        </div>
+
+        <div style={{flex:1,overflowY:'auto',padding:'1rem 1.5rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
+          {messages.map(m=>{
+            const isMe = m.user===username;
+            return (
+              <div key={m.id} style={{display:'flex',flexDirection:isMe?'row-reverse':'row',gap:'0.7rem',alignItems:'flex-start',animation:'msgPop 0.2s ease'}}>
+                <div style={{width:'32px',height:'32px',borderRadius:'50%',background:T.leaf,border:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1rem',flexShrink:0}}>{m.av}</div>
+                <div style={{maxWidth:'65%'}}>
+                  <div style={{
+                    background: isMe ? 'rgba(255,107,26,0.1)' : T.cardBg,
+                    border: `1px solid ${isMe ? 'rgba(255,107,26,0.3)' : T.border}`,
+                    borderRadius: isMe ? '10px 0 10px 10px' : '0 10px 10px 10px',
+                    padding:'0.55rem 0.9rem',
+                  }}>
+                    <div style={{fontSize:'0.68rem',color:isMe?T.amber:T.orange,marginBottom:'0.2rem',textAlign:isMe?'right':'left'}}>{m.name}</div>
+                    <div style={{fontSize:'0.85rem',lineHeight:1.5,color:T.text}}>{m.text}</div>
+                    <div style={{fontSize:'0.62rem',color:T.muted,marginTop:'0.2rem',textAlign:isMe?'right':'left'}}>{m.t}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        <div style={{padding:'0.9rem 1.5rem',borderTop:`1px solid ${T.border}`,background:'rgba(12,26,12,0.8)',display:'flex',gap:'0.75rem',flexShrink:0}}>
+          <input
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&send()}
+            placeholder="Message all watchers..."
+            style={{flex:1,background:T.jungle,border:`1px solid ${T.border}`,color:T.text,fontFamily:"'DM Mono',monospace",fontSize:'0.88rem',padding:'0.65rem 1rem',borderRadius:'2px',outline:'none'}}
+          />
+          <Btn label="Send" variant="primary" onClick={send} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   TIGER REPORTER TAB
+═══════════════════════════════════════════════ */
+const Reporter = ({user, username, reports, onReport}) => {
+  const [loc, setLoc] = useState('');
+  const [type, setType] = useState('');
+  const [sev, setSev] = useState('');
+  const [count, setCount] = useState('1');
+  const [behavior, setBehavior] = useState('');
+  const [desc, setDesc] = useState('');
+  const [safety, setSafety] = useState('');
+  const [err, setErr] = useState('');
+
+  const submit = () => {
+    if (!loc.trim()) { setErr('Please enter the location.'); return; }
+    if (!sev) { setErr('Please select a severity level.'); return; }
+    setErr('');
+    onReport({ loc:loc.trim(), type:type||'Unknown', sev, count:parseInt(count)||1, behavior:behavior||'Unknown', desc:desc.trim()||'No details provided.', safety:safety||'Unknown' });
+    setLoc(''); setType(''); setSev(''); setCount('1'); setBehavior(''); setDesc(''); setSafety('');
+  };
+
+  const sevOpts = [
+    { k:'low',      label:'LOW',      icon:'🟢', sub:'Just watching'   },
+    { k:'medium',   label:'MEDIUM',   icon:'🟡', sub:'Moving around'   },
+    { k:'high',     label:'HIGH',     icon:'🟠', sub:'Aggressive'       },
+    { k:'critical', label:'CRITICAL', icon:'🔴', sub:'Immediate danger' },
+  ];
+  const sevColors = { low:T.green, medium:T.amber, high:T.orange, critical:T.danger };
+
+  return (
+    <div style={{padding:'1.5rem 2rem',maxWidth:'780px',margin:'0 auto',animation:'fadeUp 0.3s ease'}}>
+      {/* Header */}
+      <div style={{textAlign:'center',padding:'1.8rem 2rem',background:'linear-gradient(135deg,rgba(230,57,70,0.08),rgba(255,107,26,0.06))',border:'1px solid rgba(230,57,70,0.25)',borderRadius:'6px',marginBottom:'1.5rem',animation:'pulse 3s ease-in-out infinite'}}>
+        <div style={{fontSize:'3.5rem',marginBottom:'0.5rem'}}>🐯🏠</div>
+        <h2 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2.3rem',color:T.danger,letterSpacing:'0.1em'}}>TIGER IN A HOUSE</h2>
+        <p style={{fontFamily:"'Playfair Display',serif",fontStyle:'italic',color:T.muted,fontSize:'1rem',marginTop:'0.4rem'}}>
+          Spotted a tiger in a residential location? File a report now.
+        </p>
+      </div>
+
+      {/* Form */}
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',padding:'2rem',marginBottom:'1.5rem'}}>
+        <h3 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.4rem',color:T.amber,letterSpacing:'0.1em',marginBottom:'1.5rem'}}>📋 File Tiger Report</h3>
+        <ErrBox msg={err} />
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <FG label="House / Location">
+            <Input value={loc} onChange={setLoc} placeholder="123 Oak Street, Apt 4B" />
+          </FG>
+          <FG label="Location Type">
+            <Select value={type} onChange={setType} placeholder="Select type..." options={['Single-family house','Apartment','Condo','Garage / Shed','Basement','Attic','Backyard','Other']} />
+          </FG>
+        </div>
+
+        <FG label="Severity Level">
+          <div style={{display:'flex',gap:'0.6rem',flexWrap:'wrap'}}>
+            {sevOpts.map(o=>{
+              const c = sevColors[o.k];
+              const active = sev===o.k;
+              return (
+                <button
+                  key={o.k}
+                  onClick={()=>setSev(o.k)}
+                  style={{flex:1,minWidth:'80px',padding:'0.7rem 0.5rem',border:`2px solid ${active?c:'rgba(255,107,26,0.2)'}`,borderRadius:'3px',cursor:'pointer',textAlign:'center',background:active?`rgba(${o.k==='low'?'90,158,90':o.k==='medium'?'255,171,64':o.k==='high'?'255,107,26':'230,57,70'},0.12)`:'transparent',color:active?c:T.muted,transition:'all 0.15s',fontFamily:"'DM Mono',monospace"}}
+                >
+                  <div style={{fontSize:'1.4rem'}}>{o.icon}</div>
+                  <div style={{fontSize:'0.72rem',letterSpacing:'0.08em',fontWeight:500,marginTop:'0.2rem'}}>{o.label}</div>
+                  <div style={{fontSize:'0.6rem',opacity:0.7,marginTop:'0.1rem'}}>{o.sub}</div>
+                </button>
+              );
+            })}
+          </div>
+        </FG>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <FG label="Number of Tigers">
+            <Input value={count} onChange={setCount} placeholder="1" type="number" />
+          </FG>
+          <FG label="Tiger Behavior">
+            <Select value={behavior} onChange={setBehavior} placeholder="Select behavior..." options={['Sleeping / Resting','Eating','Pacing / Restless','Growling / Roaring','Stalking','Playing / Calm','Unknown']} />
+          </FG>
+        </div>
+
+        <FG label="Description & Details">
+          <Textarea value={desc} onChange={setDesc} placeholder="Describe what you saw — size, which room, any people present, how the tiger might have entered..." />
+        </FG>
+
+        <FG label="Your Safety Status">
+          <Select value={safety} onChange={setSafety} placeholder="Select your status..." options={['Safe — observing from distance','Safe — inside locked area','Uncertain — need guidance','In danger — need help']} />
+        </FG>
+
+        <Btn label="🚨 Submit Tiger Report" variant="danger" full size="lg" onClick={submit} />
+      </div>
+
+      {/* Report list */}
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',overflow:'hidden'}}>
+        <div style={{padding:'0.9rem 1.2rem',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.2rem',color:T.amber,letterSpacing:'0.1em'}}>📋 Recent Reports</span>
+          <span style={{fontSize:'0.72rem',color:T.muted}}>{reports.length} report{reports.length!==1?'s':''}</span>
+        </div>
+        {reports.length===0 ? (
+          <div style={{padding:'2rem',textAlign:'center',color:T.muted,fontSize:'0.82rem',fontStyle:'italic'}}>No reports yet. Be the first! 🐯</div>
+        ) : (
+          [...reports].reverse().map((r,i)=>{
+            const barColor = {low:T.green,medium:T.amber,high:T.orange,critical:T.danger}[r.sev];
+            const blinkStyle = r.sev==='critical' ? {animation:'blink 1s infinite'} : {};
+            return (
+              <div key={r.id} style={{padding:'1rem 1.2rem',borderBottom:i<reports.length-1?`1px solid rgba(255,107,26,0.07)`:'none',display:'flex',gap:'0.9rem',alignItems:'flex-start'}}>
+                <div style={{width:'4px',alignSelf:'stretch',borderRadius:'2px',background:barColor,flexShrink:0,minHeight:'40px',...blinkStyle}} />
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'0.88rem',color:T.text}}>🏠 {r.loc}</div>
+                  <div style={{fontSize:'0.75rem',color:T.muted,marginTop:'0.2rem',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.desc}</div>
+                  <div style={{fontSize:'0.67rem',color:T.muted,marginTop:'0.3rem',opacity:0.7}}>by {r.name} · {r.count} tiger{r.count>1?'s':''} · {r.behavior} · {r.t}</div>
+                </div>
+                <SevBadge sev={r.sev} />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   PROFILE TAB
+═══════════════════════════════════════════════ */
+const Profile = ({user, username, onUpdate, onLogout, showToast}) => {
+  const [name, setName] = useState(user.name);
+  const [avatar, setAvatar] = useState(user.avatar);
+  const avOptions = ['🐯','🦁','🌿','🔭','🦅','🐘','🎯','🗺️','🦊','🐆'];
+
+  const getRank = r => r>=20?'Commander of the Wild':r>=10?'Senior Field Agent':r>=5?'Field Agent':r>=2?'Scout':'Rookie Scout';
+
+  const save = () => {
+    if (!name.trim()) { showToast('⚠️ Name cannot be empty'); return; }
+    onUpdate({ name: name.trim(), avatar });
+    showToast('✓ Profile saved!');
+  };
+
+  return (
+    <div style={{padding:'1.5rem 2rem',maxWidth:'580px',margin:'0 auto',animation:'fadeUp 0.3s ease'}}>
+      {/* Avatar card */}
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',padding:'2rem',textAlign:'center',marginBottom:'1.5rem'}}>
+        <div style={{width:'80px',height:'80px',borderRadius:'50%',background:T.leaf,border:`3px solid ${T.orange}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'2.4rem',margin:'0 auto 1rem',boxShadow:`0 0 30px rgba(255,107,26,0.3)`}}>
+          {user.avatar}
+        </div>
+        <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2rem',color:T.cream,letterSpacing:'0.05em'}}>{user.name}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:'italic',color:T.amber,fontSize:'1rem',marginTop:'0.25rem'}}>{getRank(user.reports||0)}</div>
+        <div style={{display:'flex',justifyContent:'center',gap:'2.5rem',marginTop:'1.5rem',paddingTop:'1.5rem',borderTop:`1px solid ${T.border}`}}>
+          {[['Reports',user.reports||0],['Messages',user.msgs||0],['Member Since',user.joined||'Today']].map(([l,v])=>(
+            <div key={l} style={{textAlign:'center'}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:'2rem',color:T.orange,lineHeight:1}}>{v}</div>
+              <div style={{fontSize:'0.62rem',color:T.muted,letterSpacing:'0.1em',textTransform:'uppercase',marginTop:'0.2rem'}}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Edit */}
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:'6px',padding:'1.8rem',marginBottom:'1rem'}}>
+        <h3 style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:T.amber,letterSpacing:'0.1em',marginBottom:'1.3rem'}}>⚙️ Edit Profile</h3>
+        <FG label="Display Name">
+          <Input value={name} onChange={setName} placeholder="Your display name" />
+        </FG>
+        <FG label="Choose Avatar">
+          <div style={{display:'flex',gap:'0.6rem',flexWrap:'wrap'}}>
+            {avOptions.map(a=>(
+              <span
+                key={a}
+                onClick={()=>setAvatar(a)}
+                style={{fontSize:'2rem',cursor:'pointer',padding:'0.3rem',borderRadius:'4px',border:`2px solid ${avatar===a?T.orange:'transparent'}`,background:avatar===a?'rgba(255,107,26,0.1)':'transparent',transition:'all 0.13s'}}
+              >{a}</span>
+            ))}
+          </div>
+        </FG>
+        <Btn label="Save Changes" variant="green" full onClick={save} />
+      </div>
+
+      <Btn label="Logout" variant="danger" full onClick={onLogout} />
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   MAIN APP SHELL
+═══════════════════════════════════════════════ */
+const AppShell = ({username, users, messages, reports, onMsg, onReport, onUpdate, onLogout, showToast}) => {
+  const [tab, setTab] = useState('dashboard');
+  const user = users[username];
+  const tabs = [{k:'dashboard',label:'Dashboard'},{k:'chat',label:'💬 Chat'},{k:'reporter',label:'🚨 Report Tiger'},{k:'profile',label:'Profile'}];
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',minHeight:'100vh'}}>
+      {/* Nav */}
+      <nav style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 1.5rem',background:'rgba(10,20,10,0.97)',borderBottom:`1px solid ${T.border}`,height:'57px',position:'sticky',top:0,zIndex:100,backdropFilter:'blur(10px)',flexShrink:0}}>
+        <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:'1.5rem',color:T.orange,letterSpacing:'0.06em',cursor:'pointer'}} onClick={()=>setTab('dashboard')}>
+          🐯 Tiger<span style={{color:T.cream,opacity:0.45,fontSize:'1rem',marginLeft:'0.3rem'}}>Watcher</span>
+        </div>
+        <div style={{display:'flex',gap:'0.1rem'}}>
+          {tabs.map(t=>(
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{fontFamily:"'Bebas Neue',cursive",fontSize:'0.95rem',letterSpacing:'0.08em',padding:'0 0.9rem',height:'57px',cursor:'pointer',color:tab===t.k?T.orange:T.muted,borderBottom:tab===t.k?`2px solid ${T.orange}`:'2px solid transparent',borderTop:'none',borderLeft:'none',borderRight:'none',background:'transparent',transition:'color 0.15s',whiteSpace:'nowrap'}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',fontSize:'0.78rem',color:T.muted}}>
+          <span>{user.avatar} {user.name}</span>
+          <Btn label="Logout" variant="ghost" size="sm" onClick={onLogout} />
+        </div>
+      </nav>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:'auto'}}>
+        {tab==='dashboard' && <Dashboard user={user} users={users} reports={reports} messages={messages} />}
+        {tab==='chat' && <Chat user={user} username={username} users={users} messages={messages} onSend={onMsg} />}
+        {tab==='reporter' && <Reporter user={user} username={username} reports={reports} onReport={onReport} />}
+        {tab==='profile' && <Profile user={user} username={username} onUpdate={onUpdate} onLogout={onLogout} showToast={showToast} />}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════════ */
+const TigerWatcher = () => {
+  const [page, setPage] = useState('landing');
+  const [users, setUsers] = useState(mkSeedUsers);
+  const [messages, setMessages] = useState(mkSeedMsgs);
+  const [reports, setReports] = useState(mkSeedReports);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [toast, setToast] = useState('');
+  const msgIdRef = useRef(100);
+  const repIdRef = useRef(100);
+  const toastTimer = useRef(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(()=>setToast(''), 2800);
+  };
+
+  const handleLogin = (uname) => {
+    setCurrentUser(uname);
+    setPage('app');
+    showToast(`Welcome back, ${users[uname].name}! 🐯`);
+  };
+
+  const handleRegister = (uname, data) => {
+    setUsers(prev => ({ ...prev, [uname]: data }));
+    setCurrentUser(uname);
+    setMessages(prev => [...prev, {
+      id: ++msgIdRef.current,
+      user: uname, name: data.name, av: data.avatar,
+      text: '🌿 Just joined Tiger Watcher! Hey everyone 👋',
+      t: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+    }]);
+    setPage('app');
+    showToast(`Welcome to Tiger Watcher, ${data.name}! 🐯`);
+  };
+
+  const handleMsg = (text) => {
+    const u = users[currentUser];
+    setMessages(prev => [...prev, {
+      id: ++msgIdRef.current,
+      user: currentUser, name: u.name, av: u.avatar, text,
+      t: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+    }]);
+    setUsers(prev => ({ ...prev, [currentUser]: { ...prev[currentUser], msgs: (prev[currentUser].msgs||0)+1 } }));
+  };
+
+  const handleReport = (data) => {
+    const u = users[currentUser];
+    const t = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const rep = { ...data, id: ++repIdRef.current, user:currentUser, name:u.name, t };
+    setReports(prev => [...prev, rep]);
+    setUsers(prev => ({ ...prev, [currentUser]: { ...prev[currentUser], reports: (prev[currentUser].reports||0)+1 } }));
+    const sevEmoji = {low:'🟢',medium:'🟡',high:'🟠',critical:'🔴'}[data.sev]||'🚨';
+    setMessages(prev => [...prev, {
+      id: ++msgIdRef.current,
+      user: currentUser, name: u.name, av: u.avatar,
+      text: `${sevEmoji} TIGER REPORT: ${data.loc} — ${data.count} tiger${data.count>1?'s':''}, ${data.sev.toUpperCase()}`,
+      t,
+    }]);
+    showToast('🚨 Tiger report submitted!');
+  };
+
+  const handleUpdate = (data) => {
+    setUsers(prev => ({ ...prev, [currentUser]: { ...prev[currentUser], ...data } }));
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setPage('landing');
+  };
+
+  return (
+    <>
+      {page==='landing' && <Landing onLogin={()=>setPage('login')} onRegister={()=>setPage('register')} />}
+      {page==='login'   && <LoginPage users={users} onSuccess={handleLogin} onGoReg={()=>setPage('register')} onBack={()=>setPage('landing')} />}
+      {page==='register'&& <RegisterPage users={users} onSuccess={handleRegister} onGoLogin={()=>setPage('login')} onBack={()=>setPage('landing')} />}
+      {page==='app'     && currentUser && (
+        <AppShell
+          username={currentUser}
+          users={users}
+          messages={messages}
+          reports={reports}
+          onMsg={handleMsg}
+          onReport={handleReport}
+          onUpdate={handleUpdate}
+          onLogout={handleLogout}
+          showToast={showToast}
+        />
+      )}
+      <Toast msg={toast} />
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<TigerWatcher />);
+</script>
+</body>
+</html>
